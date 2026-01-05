@@ -70,15 +70,17 @@ func main() {
 	http.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
 		reqStart := time.Now()
 		worker_requests_total.Inc()
-		time.Sleep(time.Duration(5+rand.Intn(20)) * time.Millisecond)
+
 		if rand.Float64() < 0.05 {
-			worker_request_errors_total.Inc()
-			http.Error(w, "random failure", http.StatusInternalServerError)
-			return
+			time.Sleep(2 * time.Second) // tail pain
+		} else {
+			time.Sleep(20 * time.Millisecond)
 		}
+
 		fmt.Fprintln(w, "Hello World")
 		worker_request_latency_seconds.Observe(time.Since(reqStart).Seconds())
 	})
+
 	var wg sync.WaitGroup
 	for w := 1; w <= worker_count; w++ {
 		wg.Add(1)
