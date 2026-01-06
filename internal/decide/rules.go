@@ -1,6 +1,6 @@
 package decide
 
-import "GOROUTINE-FAKER/internal/model"
+import "worker-metrics/internal/model"
 
 func detectLatencyDegradation(snaps []model.Snapshot) *Decision {
 	const (
