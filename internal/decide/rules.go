@@ -56,3 +56,31 @@ func detectLatencyRecovery(snaps []model.Snapshot) *Decision {
 
 	return nil
 }
+
+func detectErrorSpike(snaps []model.Snapshot) *Decision {
+	const (
+		errorThreshold = 0.02 // 2%
+		requiredHits   = 2
+	)
+
+	if len(snaps) < requiredHits {
+		return nil
+	}
+
+	count := 0
+	for i := len(snaps) - 1; i >= 0; i-- {
+		if snaps[i].ErrorRatio > errorThreshold {
+			count++
+			if count == requiredHits {
+				return &Decision{
+					Status: Unstable,
+					Reason: "error ratio > 2% for consecutive snapshots",
+				}
+			}
+		} else {
+			break
+		}
+	}
+
+	return nil
+}
