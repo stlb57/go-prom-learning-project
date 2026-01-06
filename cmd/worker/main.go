@@ -72,7 +72,7 @@ func main() {
 		worker_requests_total.Inc()
 
 		if rand.Float64() < 0.05 {
-			time.Sleep(2 * time.Second) // tail pain
+			time.Sleep(2 * time.Second)
 		} else {
 			time.Sleep(20 * time.Millisecond)
 		}

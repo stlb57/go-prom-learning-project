@@ -2,91 +2,77 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	pmodel "github.com/prometheus/common/model"
 
+	"worker-metrics/internal/decide"
 	"worker-metrics/internal/model"
+	"worker-metrics/internal/state"
 )
 
-const windowSize = 5
-const URL = "http://localhost:9090"
+const (
+	windowSize = 5
+	URL        = "http://localhost:9090"
+)
 
-var snap_slice []model.Snapshot
+var snaps []model.Snapshot
 
-func extractScalar(value pmodel.Value) float64 {
-	vector, ok := value.(pmodel.Vector)
-	if !ok || len(vector) == 0 {
+func extractScalar(v pmodel.Value) float64 {
+	vec, ok := v.(pmodel.Vector)
+	if !ok || len(vec) == 0 {
 		return 0
 	}
-	return float64(vector[0].Value)
+	return float64(vec[0].Value)
 }
 
-func observe(v1api v1.API) model.Snapshot {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func observe(api v1.API) model.Snapshot {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	reqRateVal, _, _ := v1api.Query(ctx, "rate(worker_requests_total[1m])", time.Now())
-	errRatioVal, _, _ := v1api.Query(
-		ctx,
+	req, _, _ := api.Query(ctx, "rate(worker_requests_total[1m])", time.Now())
+	errs, _, _ := api.Query(ctx,
 		"rate(worker_request_errors_total[1m]) / rate(worker_requests_total[1m])",
 		time.Now(),
 	)
-	p50Val, _, _ := v1api.Query(
-		ctx,
-		"histogram_quantile(0.5, rate(worker_request_latency_seconds_bucket[5m]))",
-		time.Now(),
-	)
-	p95Val, _, _ := v1api.Query(
-		ctx,
+	p95, _, _ := api.Query(ctx,
 		"histogram_quantile(0.95, rate(worker_request_latency_seconds_bucket[5m]))",
-		time.Now(),
-	)
-	gorVal, _, _ := v1api.Query(ctx, "worker_goroutines", time.Now())
-	memVal, _, _ := v1api.Query(ctx, "worker_memory_bytes", time.Now())
-	sloBurnVal, _, _ := v1api.Query(
-		ctx,
-		"(rate(worker_request_errors_total[5m]) / rate(worker_requests_total[5m])) / 0.001",
 		time.Now(),
 	)
 
 	return model.Snapshot{
-		RequestRate: extractScalar(reqRateVal),
-		ErrorRatio:  extractScalar(errRatioVal),
-		P50Latency:  extractScalar(p50Val),
-		P95Latency:  extractScalar(p95Val),
-		SLOBurnRate: extractScalar(sloBurnVal),
-		Goroutines:  extractScalar(gorVal),
-		MemoryBytes: extractScalar(memVal),
+		RequestRate: extractScalar(req),
+		ErrorRatio:  extractScalar(errs),
+		P95Latency:  extractScalar(p95),
 	}
 }
 
 func main() {
-	client, err := api.NewClient(api.Config{
-		Address: URL,
-	})
-	if err != nil {
-		fmt.Println("Error creating client")
-		os.Exit(1)
-	}
-
-	v1api := v1.NewAPI(client)
+	client, _ := api.NewClient(api.Config{Address: URL})
+	api := v1.NewAPI(client)
 
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		snap := observe(v1api)
+		snap := observe(api)
 
-		if len(snap_slice) == windowSize {
-			snap_slice = snap_slice[1:]
+		if len(snaps) == windowSize {
+			snaps = snaps[1:]
 		}
-		snap_slice = append(snap_slice, snap)
+		snaps = append(snaps, snap)
 
-		fmt.Printf("%+v\n", snap)
+		if d := decide.Evaluate(snaps); d != nil {
+			switch d.Status {
+			case decide.Healthy:
+				state.Set(state.Healthy)
+			case decide.Degraded:
+				state.Set(state.Degraded)
+			case decide.Unstable:
+				state.Set(state.Unstable)
+			}
+		}
 	}
 }

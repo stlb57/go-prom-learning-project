@@ -84,3 +84,19 @@ func detectErrorSpike(snaps []model.Snapshot) *Decision {
 
 	return nil
 }
+
+func Evaluate(snaps []model.Snapshot) *Decision {
+	if d := detectLatencyDegradation(snaps); d != nil {
+		return d
+	}
+
+	if d := detectErrorSpike(snaps); d != nil {
+		return d
+	}
+
+	if d := detectLatencyRecovery(snaps); d != nil {
+		return d
+	}
+
+	return nil
+}
