@@ -1,6 +1,6 @@
 package decide
 
-import "microscope/internal/model"
+import "GOROUTINE-FAKER/internal/model"
 
 func detectLatencyDegradation(snaps []model.Snapshot) *Decision {
 	const (
